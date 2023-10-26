@@ -255,6 +255,30 @@ def send_feedback_to_client(feedback_message, conn):
     conn.send(send_length)
     conn.send(feedback_message)
 
+def parse_insert(sql):
+    table_pattern = r'INSERT INTO (\w+)'
+    columns_pattern = r'\((.*?)\)'
+    values_pattern = r'VALUES \((.*?)\)'
+
+    # Extract table name, column names, and values
+    table_match = re.search(table_pattern, sql)
+    columns_match = re.search(columns_pattern, sql)
+    values_match = re.search(values_pattern, sql)
+
+    if table_match and columns_match and values_match:
+        table_name = table_match.group(1)
+        column_names = [column.strip() for column in columns_match.group(1).split(',')]
+        values = [value.strip() for value in values_match.group(1).split(',')]
+
+        insert_info = {
+            'table_name': table_name,
+            'column_names': column_names,
+            'values': values
+        }
+        return insert_info
+    else:
+        return None
+
 
 def handle_client(conn, addr):
     print(f"New connection: {addr} connected")
@@ -269,7 +293,7 @@ def handle_client(conn, addr):
             print(f"{addr}: {msg}")
 
             #check if the message is a valid sql query
-            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)")
+            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)|INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?")
             if re.fullmatch(pattern, msg):
                 query_words = msg.split(" ")
                 if query_words[0] == 'USE':
@@ -306,6 +330,8 @@ def handle_client(conn, addr):
                             table_name = query_words[2]
                             query_execution_result = drop_table(current_database, table_name)
                             send_feedback_to_client(query_execution_result, conn)
+                elif query_words[0] == 'INSERT':
+                    print(parse_insert(msg))
             elif msg == DISCONNECT_MESSAGE:   
                 connected = False
                 send_feedback_to_client("Disconnected successfully", conn)                   
