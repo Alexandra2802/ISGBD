@@ -270,7 +270,7 @@ image_1 = sql_query_canvas.create_image(
 )
 
 
-window.resizable(False, False)
+window.resizable(True, True)
 window.mainloop()
 
 

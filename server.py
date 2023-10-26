@@ -238,6 +238,21 @@ def drop_table(db_name, table_name):
     for database in databases:
         if database.attrib['dataBaseName'] == db_name:          
             tables = database.find("Tables")
+
+            #check if another table referes this table 
+            is_referenced = False
+            for table in tables:
+                foreign_keys = table.find("foreignKeys")
+                if foreign_keys:
+                    for fk in foreign_keys:
+                        references = fk.findall("references")
+                        for ref in references:
+                            ref_table = ref.find("refTable")
+                            if ref_table.text == table_name:
+                                is_referenced = True
+            if is_referenced:
+                return "Table is referenced by another table and cannot be dropped!"
+                          
             for table in tables.findall("Table"):
                 if table.attrib['tableName'] == table_name:
                     tables.remove(table)
