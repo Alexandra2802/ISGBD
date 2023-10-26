@@ -1,0 +1,176 @@
+<Databases>
+  <DataBase dataBaseName="Library">
+    <Tables>
+      <Table tableName="Authors">
+        <Structure>
+          <Attribute attributeName="id" type="int" isnull="0" />
+          <Attribute attributeName="name" type="varchar(50)" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>id</pkAttribute>
+        </primaryKey>
+        <IndexFiles>
+          <IndexFile indexName="my_index.ind" isUnique="0">
+            <IndexAttributes>
+              <IAttribute>id</IAttribute>
+              <IAttribute>name</IAttribute>
+            </IndexAttributes>
+          </IndexFile>
+        </IndexFiles>
+      </Table>
+      <Table tableName="Books">
+        <Structure>
+          <Attribute attributeName="id" type="int" isnull="0" />
+          <Attribute attributeName="title" type="varchar(50)" isnull="1" />
+          <Attribute attributeName="authorID" type="int" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>id</pkAttribute>
+        </primaryKey>
+        <foreignKeys>
+          <foreignKey>
+            <fkAttribute>authorID</fkAttribute>
+            <references>
+              <refTable>Authors</refTable>
+              <refAttribute>id</refAttribute>
+            </references>
+          </foreignKey>
+        </foreignKeys>
+      </Table>
+    </Tables>
+  </DataBase>
+  <DataBase dataBaseName="Movies">
+    <Tables>
+      <Table tableName="Directors">
+        <Structure>
+          <Attribute attributeName="id" type="int" />
+          <Attribute attributeName="name" type="varchar" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>id</pkAttribute>
+        </primaryKey>
+      </Table>
+      <Table tableName="Actors">
+        <Structure>
+          <Attribute attributeName="id" type="int" isnull="0" />
+          <Attribute attributeName="directorID" type="int" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>id</pkAttribute>
+        </primaryKey>
+        <foreignKeys>
+          <foreignKey>
+            <fkAttribute>directorID</fkAttribute>
+            <references>
+              <refTable>Directors</refTable>
+              <refAttribute>id</refAttribute>
+            </references>
+          </foreignKey>
+        </foreignKeys>
+      </Table>
+    </Tables>
+  </DataBase>
+  <DataBase dataBaseName="Restaurant">
+    <Tables>
+      <Table tableName="Orders">
+        <Structure>
+          <Attribute attributeName="OrderID" type="int" isnull="0" />
+          <Attribute attributeName="PersonID" type="int" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>OrderID</pkAttribute>
+        </primaryKey>
+        <foreignKeys>
+          <foreignKey>
+            <fkAttribute>PersonID</fkAttribute>
+            <references>
+              <refTable>Actors</refTable>
+              <refAttribute>id</refAttribute>
+            </references>
+          </foreignKey>
+        </foreignKeys>
+      </Table>
+    </Tables>
+  </DataBase>
+  <DataBase dataBaseName="Hospital">
+    <Tables>
+      <Table tableName="Doctors">
+        <Structure>
+          <Attribute attributeName="id" type="int" />
+          <Attribute attributeName="name" type="varchar" />
+          <Attribute attributeName="email" type="varchar" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>id</pkAttribute>
+        </primaryKey>
+        <IndexFiles>
+          <IndexFile indexName="doctors_index.ind" isUnique="0">
+            <IndexAttributes>
+              <IAttribute>id</IAttribute>
+              <IAttribute>email</IAttribute>
+            </IndexAttributes>
+          </IndexFile>
+        </IndexFiles>
+      </Table>
+      <Table tableName="Patients">
+        <Attribute attributeName="id" type="int" />
+        <Attribute attributeName="first_name" type="varchar(50" />
+        <Structure>
+          <primaryKey />
+        </Structure>
+      </Table>
+    </Tables>
+  </DataBase>
+  <DataBase dataBaseName="School">
+    <Tables />
+  </DataBase>
+  <DataBase dataBaseName="Students">
+    <Tables>
+      <Table tableName="disciplines">
+        <Structure>
+          <Attribute attributeName="DiscID" type="varchar(5)" isnull="1" />
+          <Attribute attributeName="DName" type="varchar(20)" isnull="1" />
+          <Attribute attributeName="CreditNr" type="int" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>DiscID</pkAttribute>
+        </primaryKey>
+        <IndexFiles>
+          <IndexFile indexName="my_index.ind" isUnique="1">
+            <IndexAttributes>
+              <IAttribute>DName</IAttribute>
+            </IndexAttributes>
+          </IndexFile>
+        </IndexFiles>
+      </Table>
+      <Table tableName="specialization">
+        <Structure>
+          <Attribute attributeName="SpecID" type="varchar(5)" isnull="1" />
+          <Attribute attributeName="SpecName" type="varchar(40)" isnull="1" />
+          <Attribute attributeName="Language" type="varchar(20)" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>SpecID</pkAttribute>
+        </primaryKey>
+      </Table>
+      <Table tableName="groups">
+        <Structure>
+          <Attribute attributeName="GroupId" type="int" isnull="1" />
+          <Attribute attributeName="SpecID" type="varchar(20)" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>GroupId</pkAttribute>
+        </primaryKey>
+        <foreignKeys>
+          <foreignKey>
+            <fkAttribute>SpecID</fkAttribute>
+            <references>
+              <refTable>specialization</refTable>
+              <refAttribute>SpecID</refAttribute>
+            </references>
+          </foreignKey>
+        </foreignKeys>
+      </Table>
+    </Tables>
+  </DataBase>
+</Databases>
