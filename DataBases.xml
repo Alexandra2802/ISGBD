@@ -4,7 +4,7 @@
       <Table tableName="Authors">
         <Structure>
           <Attribute attributeName="id" type="int" isnull="0" />
-          <Attribute attributeName="name" type="varchar(50)" isnull="1" />
+          <Attribute attributeName="name" type="varchar(5)" isnull="1" />
         </Structure>
         <primaryKey>
           <pkAttribute>id</pkAttribute>
@@ -122,7 +122,17 @@
     </Tables>
   </DataBase>
   <DataBase dataBaseName="School">
-    <Tables />
+    <Tables>
+      <Table tableName="Students">
+        <Structure>
+          <Attribute attributeName="id" type="int" isnull="1" />
+          <Attribute attributeName="name" type="varchar(50)" isnull="1" />
+        </Structure>
+        <primaryKey>
+          <pkAttribute>id</pkAttribute>
+        </primaryKey>
+      </Table>
+    </Tables>
   </DataBase>
   <DataBase dataBaseName="Students">
     <Tables>

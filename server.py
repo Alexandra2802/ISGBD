@@ -1,3 +1,5 @@
+import json
+import os
 import socket
 import threading
 import re
@@ -228,7 +230,13 @@ def create_table(db_name, table_info):
                                 refAttribute = ET.SubElement(references,'refAttribute')
                                 refAttribute.text = reference_pk
                     tree.write("DataBases.xml") 
+                    #create an empty file for the data
+                    file_name = table_name + ".json"
+                    file_path = os.path.join(os.getcwd(), file_name)
+                    with open(file_path, "w") as json_file:
+                        pass
                     return "Query executed successfully"
+    
         
 def drop_table(db_name, table_name):
     tree = ET.parse('DataBases.xml')
@@ -278,8 +286,72 @@ def parse_insert(sql):
         return insert_info
     else:
         return None
+    
+def insert(table_name, column_names, values):
+    #de verificat daca:
+        #1. exista tabelul cu numele asta si coloanele astea            x
+        #2. tipurile valorilor corespund cu tipurile coloanelor         x
+        #3. sa nu adaugam o valoare pt cheia primara care exista deja   
+        #4. valoarea cheii straine exista
+    tree = ET.parse('DataBases.xml')
+    root = tree.getroot()
 
+    databases = root.findall("DataBase")
+    for database in databases:
+        tables = database.find("Tables")
+        for table in tables:
+            if table.attrib["tableName"] == table_name:
+                structure = table.find("Structure")
+                columns = structure.findall("Attribute")
+                decalred_column_names = [col.attrib["attributeName"] for col in columns]
 
+                #verificam daca toate coloanele exista
+                for column in column_names:
+                    if not column in decalred_column_names:
+                        return f"Columnn {column} does not exist"
+
+                #verificam daca tipurile corespund  
+                concatenated_values =''       
+                for i in range (0,len(column_names)):
+                    expected_type = columns[i].attrib["type"]
+                    if expected_type == 'int':
+                        if not values[i].isnumeric():
+                            return f"Value {values[i]} does not match type {expected_type}"
+                        else:
+                            values[i]=int(values[i])
+                    elif "varchar" in expected_type:
+                        length = int(expected_type.split('(')[1][:-1])
+                        if len(values[i]) > length:
+                            return f"Value {values[i]} exceeds the lenght limit of {length}"
+                        values[i] = values[i][1:-1]
+
+                    #find primary key
+                    primary_key = table.find("primaryKey")
+                    pk_attribute = primary_key.find("pkAttribute")
+
+                    
+
+                    #construct the key-value object
+                    if column_names[i] == pk_attribute.text:
+                        key = values[i]
+                    else:
+                        if concatenated_values == '':
+                            concatenated_values+=str(values[i])
+                        else:
+                            concatenated_values = concatenated_values+"#"+str(values[i])
+                    
+                ob = {
+                    'key':key,
+                    'value': concatenated_values
+                }
+                # save ob to file
+                with open(table_name+'.json', "w") as json_file:
+                    json.dump(ob, json_file)
+                return "Values added successfully"
+                
+    return "Table not found"
+    
+                
 def handle_client(conn, addr):
     print(f"New connection: {addr} connected")
     connected= True
@@ -331,7 +403,9 @@ def handle_client(conn, addr):
                             query_execution_result = drop_table(current_database, table_name)
                             send_feedback_to_client(query_execution_result, conn)
                 elif query_words[0] == 'INSERT':
-                    print(parse_insert(msg))
+                    table_info = parse_insert(msg)
+                    query_execution_result = insert(table_info["table_name"], table_info["column_names"], table_info["values"])
+                    send_feedback_to_client(query_execution_result, conn)
             elif msg == DISCONNECT_MESSAGE:   
                 connected = False
                 send_feedback_to_client("Disconnected successfully", conn)                   
