@@ -5,6 +5,8 @@ import threading
 import re
 import xml.etree.ElementTree as ET
 
+from numpy import arange
+
 HEADER = 64
 PORT = 5050
 SERVER = socket.gethostbyname(socket.gethostname())
@@ -291,7 +293,7 @@ def insert(table_name, column_names, values):
     #de verificat daca:
         #1. exista tabelul cu numele asta si coloanele astea            x
         #2. tipurile valorilor corespund cu tipurile coloanelor         x
-        #3. sa nu adaugam o valoare pt cheia primara care exista deja   
+        #3. sa nu adaugam o valoare pt cheia primara care exista deja   x
         #4. valoarea cheii straine exista
     tree = ET.parse('DataBases.xml')
     root = tree.getroot()
@@ -329,11 +331,21 @@ def insert(table_name, column_names, values):
                     primary_key = table.find("primaryKey")
                     pk_attribute = primary_key.find("pkAttribute")
 
-                    
-
                     #construct the key-value object
                     if column_names[i] == pk_attribute.text:
                         key = values[i]
+                        #verificam daca mai exista record-uri cu aceeasi valoare pt cheia primara
+                        filepath = table_name+'.json'
+                        with open(filepath, 'r') as fp:
+                            try:
+                            # Try to load the existing data
+                                data = json.load(fp)
+                                for item in data:
+                                    if item.get('key')  == key:
+                                        return "The same primary key value exists"
+                            except json.decoder.JSONDecodeError:
+                                print('Error')
+                            
                     else:
                         if concatenated_values == '':
                             concatenated_values+=str(values[i])
@@ -345,12 +357,67 @@ def insert(table_name, column_names, values):
                     'value': concatenated_values
                 }
                 # save ob to file
-                with open(table_name+'.json', "w") as json_file:
-                    json.dump(ob, json_file)
+                file_path = table_name+'.json'
+                try:
+                    with open(file_path, 'r') as file:
+                        data = json.load(file)
+                except (FileNotFoundError, json.decoder.JSONDecodeError):
+                    data = []
+                data.append(ob)
+                with open(file_path, 'w') as file:
+                    json.dump(data, file, indent=4)
                 return "Values added successfully"
                 
     return "Table not found"
-    
+
+def parse_delete(sql_statement):
+    table_pattern = r'DELETE\s+FROM\s+([a-zA-Z_][a-zA-Z0-9_]*) WHERE\s+(.*);?'
+    condition_pattern = r'WHERE\s+(.*)'
+
+
+    # Extract table name
+    table_match = re.search(table_pattern, sql_statement)
+    if table_match:
+        table_name = table_match.group(1)
+    else:
+        table_name = None
+
+    # Extract condition (where clause) if it exists
+    condition_match = re.search(condition_pattern, sql_statement)
+    if condition_match:
+        condition = condition_match.group(1)
+    else:
+        condition = None
+
+    condition_info = condition.split('=')
+    attrib = condition_info[0]
+    attrib_value = condition_info[1]
+
+    return {
+        'table_name': table_name,
+        'attrib': attrib,
+        'attrib_value': attrib_value
+    }
+
+
+def delete(table_name, db_name, attrib, attrib_value):
+    tree = ET.parse('DataBases.xml')
+    root = tree.getroot()
+
+    databases = root.findall("DataBase")
+    for database in databases:
+        if database.attrib['dataBaseName'] == db_name:          
+            tables = database.find("Tables")
+            for table in tables.findall("Table"):
+                if table.attrib['tableName'] == table_name:
+                    filepath = table_name+'.json'
+                    with open(filepath, 'r') as fp:
+                        data = json.load(fp)
+                        data = [item for item in data if item['key'] != int(attrib_value)]
+                    with open(filepath, 'w') as fp:
+                        json.dump(data, fp)
+                    return "Deleted successfully"
+            return "Table not found"
                 
 def handle_client(conn, addr):
     print(f"New connection: {addr} connected")
@@ -365,7 +432,7 @@ def handle_client(conn, addr):
             print(f"{addr}: {msg}")
 
             #check if the message is a valid sql query
-            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)|INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?")
+            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)|INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?|DELETE\s+FROM\s+([a-zA-Z_][a-zA-Z0-9_]*) WHERE\s+(.*);?")
             if re.fullmatch(pattern, msg):
                 query_words = msg.split(" ")
                 if query_words[0] == 'USE':
@@ -405,6 +472,10 @@ def handle_client(conn, addr):
                 elif query_words[0] == 'INSERT':
                     table_info = parse_insert(msg)
                     query_execution_result = insert(table_info["table_name"], table_info["column_names"], table_info["values"])
+                    send_feedback_to_client(query_execution_result, conn)
+                elif query_words[0] == 'DELETE':
+                    table_info = parse_delete(msg)
+                    query_execution_result = delete(table_info['table_name'], current_database, table_info['attrib'],table_info['attrib_value'])
                     send_feedback_to_client(query_execution_result, conn)
             elif msg == DISCONNECT_MESSAGE:   
                 connected = False
