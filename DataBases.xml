@@ -4,7 +4,9 @@
       <Table tableName="Authors">
         <Structure>
           <Attribute attributeName="id" type="int" isnull="0" />
-          <Attribute attributeName="name" type="varchar(5)" isnull="1" />
+          <Attribute attributeName="name" type="varchar(100)" isnull="1" />
+          <Attribute attributeName="birthyear" type="int" isnull="1" />
+          <Attribute attributeName="country" type="varchar(500)" isnull="1" />
         </Structure>
         <primaryKey>
           <pkAttribute>id</pkAttribute>
@@ -134,53 +136,5 @@
       </Table>
     </Tables>
   </DataBase>
-  <DataBase dataBaseName="Students">
-    <Tables>
-      <Table tableName="disciplines">
-        <Structure>
-          <Attribute attributeName="DiscID" type="varchar(5)" isnull="1" />
-          <Attribute attributeName="DName" type="varchar(20)" isnull="1" />
-          <Attribute attributeName="CreditNr" type="int" isnull="1" />
-        </Structure>
-        <primaryKey>
-          <pkAttribute>DiscID</pkAttribute>
-        </primaryKey>
-        <IndexFiles>
-          <IndexFile indexName="my_index.ind" isUnique="1">
-            <IndexAttributes>
-              <IAttribute>DName</IAttribute>
-            </IndexAttributes>
-          </IndexFile>
-        </IndexFiles>
-      </Table>
-      <Table tableName="specialization">
-        <Structure>
-          <Attribute attributeName="SpecID" type="varchar(5)" isnull="1" />
-          <Attribute attributeName="SpecName" type="varchar(40)" isnull="1" />
-          <Attribute attributeName="Language" type="varchar(20)" isnull="1" />
-        </Structure>
-        <primaryKey>
-          <pkAttribute>SpecID</pkAttribute>
-        </primaryKey>
-      </Table>
-      <Table tableName="groups">
-        <Structure>
-          <Attribute attributeName="GroupId" type="int" isnull="1" />
-          <Attribute attributeName="SpecID" type="varchar(20)" isnull="1" />
-        </Structure>
-        <primaryKey>
-          <pkAttribute>GroupId</pkAttribute>
-        </primaryKey>
-        <foreignKeys>
-          <foreignKey>
-            <fkAttribute>SpecID</fkAttribute>
-            <references>
-              <refTable>specialization</refTable>
-              <refAttribute>SpecID</refAttribute>
-            </references>
-          </foreignKey>
-        </foreignKeys>
-      </Table>
-    </Tables>
-  </DataBase>
+ 
 </Databases>

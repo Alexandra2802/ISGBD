@@ -4,6 +4,9 @@ import socket
 import threading
 import re
 import xml.etree.ElementTree as ET
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+import pymongo
 
 from numpy import arange
 
@@ -289,12 +292,30 @@ def parse_insert(sql):
     else:
         return None
     
-def insert(table_name, column_names, values):
+def connect_to_db():
+        
+    # from pymongo.mongo_client import MongoClient
+    # from pymongo.server_api import ServerApi
+
+    uri = "mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority"
+
+    # Create a new client and connect to the server
+    client = MongoClient(uri, server_api=ServerApi('1'))
+    
+
+    # Send a ping to confirm a successful connection
+    try:
+        client.admin.command('ping')
+        print("Pinged your deployment. You successfully connected to MongoDB!")
+    except Exception as e:
+        print(e)
+
+        
+def insert(db_name, table_name, column_names, values):
     #de verificat daca:
         #1. exista tabelul cu numele asta si coloanele astea            x
         #2. tipurile valorilor corespund cu tipurile coloanelor         x
         #3. sa nu adaugam o valoare pt cheia primara care exista deja   x
-        #4. valoarea cheii straine exista
     tree = ET.parse('DataBases.xml')
     root = tree.getroot()
 
@@ -333,19 +354,7 @@ def insert(table_name, column_names, values):
 
                     #construct the key-value object
                     if column_names[i] == pk_attribute.text:
-                        key = values[i]
-                        #verificam daca mai exista record-uri cu aceeasi valoare pt cheia primara
-                        filepath = table_name+'.json'
-                        with open(filepath, 'r') as fp:
-                            try:
-                            # Try to load the existing data
-                                data = json.load(fp)
-                                for item in data:
-                                    if item.get('key')  == key:
-                                        return "The same primary key value exists"
-                            except json.decoder.JSONDecodeError:
-                                print('Error')
-                            
+                        key = values[i]                    
                     else:
                         if concatenated_values == '':
                             concatenated_values+=str(values[i])
@@ -356,18 +365,19 @@ def insert(table_name, column_names, values):
                     'key':key,
                     'value': concatenated_values
                 }
-                # save ob to file
-                file_path = table_name+'.json'
-                try:
-                    with open(file_path, 'r') as file:
-                        data = json.load(file)
-                except (FileNotFoundError, json.decoder.JSONDecodeError):
-                    data = []
-                data.append(ob)
-                with open(file_path, 'w') as file:
-                    json.dump(data, file, indent=4)
-                return "Values added successfully"
-                
+                # save to db
+                client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
+                db = client[db_name]
+                collection = db[table_name]
+                #verificam daca mai exista record-uri cu aceeasi valoare pt cheia primara
+                objects_by_pk = collection.find_one({'key':ob['key']})
+                if objects_by_pk is not None:
+                    return "The same primary key exists"
+                # Insert a single document
+                result = collection.insert_one(ob)
+                print("Inserted document ID:", result.inserted_id)
+                return "Query executed successfully"
+               
     return "Table not found"
 
 def parse_delete(sql_statement):
@@ -410,15 +420,23 @@ def delete(table_name, db_name, attrib, attrib_value):
             tables = database.find("Tables")
             for table in tables.findall("Table"):
                 if table.attrib['tableName'] == table_name:
-                    filepath = table_name+'.json'
-                    with open(filepath, 'r') as fp:
-                        data = json.load(fp)
-                        data = [item for item in data if item['key'] != int(attrib_value)]
-                    with open(filepath, 'w') as fp:
-                        json.dump(data, fp)
-                    return "Deleted successfully"
+                    #delete from db
+                    client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
+                    db = client[db_name]
+                    collection = db[table_name]
+
+                    criteria = {'key': int(attrib_value)}
+                    result = collection.delete_one(criteria)
+
+                    if result.deleted_count > 0:
+                        return "Deleted successfully"
+                    else:
+                        return "No documents matched"
             return "Table not found"
-                
+    
+    
+
+                    
 def handle_client(conn, addr):
     print(f"New connection: {addr} connected")
     connected= True
@@ -471,7 +489,7 @@ def handle_client(conn, addr):
                             send_feedback_to_client(query_execution_result, conn)
                 elif query_words[0] == 'INSERT':
                     table_info = parse_insert(msg)
-                    query_execution_result = insert(table_info["table_name"], table_info["column_names"], table_info["values"])
+                    query_execution_result = insert(current_database,table_info["table_name"], table_info["column_names"], table_info["values"])
                     send_feedback_to_client(query_execution_result, conn)
                 elif query_words[0] == 'DELETE':
                     table_info = parse_delete(msg)
@@ -492,6 +510,7 @@ def start():
         thread = threading.Thread(target=handle_client, args=(conn, addr))
         thread.start()
         print(f"Active connections: {threading.active_count()-1}")
+        connect_to_db()
 
 print("Server starting...")
 start()
