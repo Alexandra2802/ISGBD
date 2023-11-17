@@ -1,7 +1,14 @@
+import json
+import os
 import socket
 import threading
 import re
 import xml.etree.ElementTree as ET
+from pymongo.mongo_client import MongoClient
+from pymongo.server_api import ServerApi
+import pymongo
+
+from numpy import arange
 
 HEADER = 64
 PORT = 5050
@@ -228,7 +235,13 @@ def create_table(db_name, table_info):
                                 refAttribute = ET.SubElement(references,'refAttribute')
                                 refAttribute.text = reference_pk
                     tree.write("DataBases.xml") 
+                    #create an empty file for the data
+                    file_name = table_name + ".json"
+                    file_path = os.path.join(os.getcwd(), file_name)
+                    with open(file_path, "w") as json_file:
+                        pass
                     return "Query executed successfully"
+    
         
 def drop_table(db_name, table_name):
     tree = ET.parse('DataBases.xml')
@@ -270,7 +283,175 @@ def send_feedback_to_client(feedback_message, conn):
     conn.send(send_length)
     conn.send(feedback_message)
 
+def parse_insert(sql):
+    table_pattern = r'INSERT INTO (\w+)'
+    columns_pattern = r'\((.*?)\)'
+    values_pattern = r'VALUES \((.*?)\)'
 
+    # Extract table name, column names, and values
+    table_match = re.search(table_pattern, sql)
+    columns_match = re.search(columns_pattern, sql)
+    values_match = re.search(values_pattern, sql)
+
+    if table_match and columns_match and values_match:
+        table_name = table_match.group(1)
+        column_names = [column.strip() for column in columns_match.group(1).split(',')]
+        values = [value.strip() for value in values_match.group(1).split(',')]
+
+        insert_info = {
+            'table_name': table_name,
+            'column_names': column_names,
+            'values': values
+        }
+        return insert_info
+    else:
+        return None
+    
+def connect_to_db():
+        
+    # from pymongo.mongo_client import MongoClient
+    # from pymongo.server_api import ServerApi
+
+    uri = "mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority"
+
+    # Create a new client and connect to the server
+    client = MongoClient(uri, server_api=ServerApi('1'))
+    
+
+    # Send a ping to confirm a successful connection
+    try:
+        client.admin.command('ping')
+        print("Pinged your deployment. You successfully connected to MongoDB!")
+    except Exception as e:
+        print(e)
+
+        
+def insert(db_name, table_name, column_names, values):
+    #de verificat daca:
+        #1. exista tabelul cu numele asta si coloanele astea            x
+        #2. tipurile valorilor corespund cu tipurile coloanelor         x
+        #3. sa nu adaugam o valoare pt cheia primara care exista deja   x
+    tree = ET.parse('DataBases.xml')
+    root = tree.getroot()
+
+    databases = root.findall("DataBase")
+    for database in databases:
+        tables = database.find("Tables")
+        for table in tables:
+            if table.attrib["tableName"] == table_name:
+                structure = table.find("Structure")
+                columns = structure.findall("Attribute")
+                decalred_column_names = [col.attrib["attributeName"] for col in columns]
+
+                #verificam daca toate coloanele exista
+                for column in column_names:
+                    if not column in decalred_column_names:
+                        return f"Columnn {column} does not exist"
+
+                #verificam daca tipurile corespund  
+                concatenated_values =''       
+                for i in range (0,len(column_names)):
+                    expected_type = columns[i].attrib["type"]
+                    if expected_type == 'int':
+                        if not values[i].isnumeric():
+                            return f"Value {values[i]} does not match type {expected_type}"
+                        else:
+                            values[i]=int(values[i])
+                    elif "varchar" in expected_type:
+                        length = int(expected_type.split('(')[1][:-1])
+                        if len(values[i]) > length:
+                            return f"Value {values[i]} exceeds the lenght limit of {length}"
+                        values[i] = values[i][1:-1]
+
+                    #find primary key
+                    primary_key = table.find("primaryKey")
+                    pk_attribute = primary_key.find("pkAttribute")
+
+                    #construct the key-value object
+                    if column_names[i] == pk_attribute.text:
+                        key = values[i]                    
+                    else:
+                        if concatenated_values == '':
+                            concatenated_values+=str(values[i])
+                        else:
+                            concatenated_values = concatenated_values+"#"+str(values[i])
+                    
+                ob = {
+                    'key':key,
+                    'value': concatenated_values
+                }
+                # save to db
+                client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
+                db = client[db_name]
+                collection = db[table_name]
+                #verificam daca mai exista record-uri cu aceeasi valoare pt cheia primara
+                objects_by_pk = collection.find_one({'key':ob['key']})
+                if objects_by_pk is not None:
+                    return "The same primary key exists"
+                # Insert a single document
+                result = collection.insert_one(ob)
+                print("Inserted document ID:", result.inserted_id)
+                return "Query executed successfully"
+               
+    return "Table not found"
+
+def parse_delete(sql_statement):
+    table_pattern = r'DELETE\s+FROM\s+([a-zA-Z_][a-zA-Z0-9_]*) WHERE\s+(.*);?'
+    condition_pattern = r'WHERE\s+(.*)'
+
+
+    # Extract table name
+    table_match = re.search(table_pattern, sql_statement)
+    if table_match:
+        table_name = table_match.group(1)
+    else:
+        table_name = None
+
+    # Extract condition (where clause) if it exists
+    condition_match = re.search(condition_pattern, sql_statement)
+    if condition_match:
+        condition = condition_match.group(1)
+    else:
+        condition = None
+
+    condition_info = condition.split('=')
+    attrib = condition_info[0]
+    attrib_value = condition_info[1]
+
+    return {
+        'table_name': table_name,
+        'attrib': attrib,
+        'attrib_value': attrib_value
+    }
+
+
+def delete(table_name, db_name, attrib, attrib_value):
+    tree = ET.parse('DataBases.xml')
+    root = tree.getroot()
+
+    databases = root.findall("DataBase")
+    for database in databases:
+        if database.attrib['dataBaseName'] == db_name:          
+            tables = database.find("Tables")
+            for table in tables.findall("Table"):
+                if table.attrib['tableName'] == table_name:
+                    #delete from db
+                    client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
+                    db = client[db_name]
+                    collection = db[table_name]
+
+                    criteria = {'key': int(attrib_value)}
+                    result = collection.delete_one(criteria)
+
+                    if result.deleted_count > 0:
+                        return "Deleted successfully"
+                    else:
+                        return "No documents matched"
+            return "Table not found"
+    
+    
+
+                    
 def handle_client(conn, addr):
     print(f"New connection: {addr} connected")
     connected= True
@@ -284,7 +465,7 @@ def handle_client(conn, addr):
             print(f"{addr}: {msg}")
 
             #check if the message is a valid sql query
-            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)")
+            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)|INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?|DELETE\s+FROM\s+([a-zA-Z_][a-zA-Z0-9_]*) WHERE\s+(.*);?")
             if re.fullmatch(pattern, msg):
                 query_words = msg.split(" ")
                 if query_words[0] == 'USE':
@@ -321,6 +502,14 @@ def handle_client(conn, addr):
                             table_name = query_words[2]
                             query_execution_result = drop_table(current_database, table_name)
                             send_feedback_to_client(query_execution_result, conn)
+                elif query_words[0] == 'INSERT':
+                    table_info = parse_insert(msg)
+                    query_execution_result = insert(current_database,table_info["table_name"], table_info["column_names"], table_info["values"])
+                    send_feedback_to_client(query_execution_result, conn)
+                elif query_words[0] == 'DELETE':
+                    table_info = parse_delete(msg)
+                    query_execution_result = delete(table_info['table_name'], current_database, table_info['attrib'],table_info['attrib_value'])
+                    send_feedback_to_client(query_execution_result, conn)
             elif msg == DISCONNECT_MESSAGE:   
                 connected = False
                 send_feedback_to_client("Disconnected successfully", conn)                   
@@ -336,6 +525,7 @@ def start():
         thread = threading.Thread(target=handle_client, args=(conn, addr))
         thread.start()
         print(f"Active connections: {threading.active_count()-1}")
+        connect_to_db()
 
 print("Server starting...")
 start()
