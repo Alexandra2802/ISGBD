@@ -23,7 +23,7 @@
       <Table tableName="Books">
         <Structure>
           <Attribute attributeName="id" type="int" isnull="0" />
-          <Attribute attributeName="title" type="varchar(50)" isnull="1" />
+          <Attribute attributeName="title" type="varchar(50)" isnull="1" isUnique="1" />
           <Attribute attributeName="authorID" type="int" isnull="1" />
         </Structure>
         <primaryKey>
@@ -51,7 +51,7 @@
         <primaryKey>
           <pkAttribute>id</pkAttribute>
         </primaryKey>
-      </Table>
+      <IndexFiles><IndexFile indexName="my_index.ind" isUnique="0"><IndexAttributes><IAttribute>name</IAttribute></IndexAttributes></IndexFile><IndexFile indexName="my_index2.ind" isUnique="0"><IndexAttributes><IAttribute>name</IAttribute></IndexAttributes></IndexFile></IndexFiles></Table>
       <Table tableName="Actors">
         <Structure>
           <Attribute attributeName="id" type="int" isnull="0" />

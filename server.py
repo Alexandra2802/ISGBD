@@ -135,6 +135,10 @@ def create_index(db_name, index_name,unique, table_name, columns):
                     if not index_attributes_added:
                         return f"Column {col} not found"          
                     tree.write("DataBases.xml")
+                    #create index in mongo
+                    client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
+                    db = client[db_name]
+                    db.create_collection(index_name)
                     return "Query executed successfully"
             return "Table not found"
         
@@ -216,8 +220,11 @@ def create_table(db_name, table_info):
                         for pk_column in table_info['primary_key_attributes']:
                             pk_attr = ET.SubElement(pk,"pkAttribute")
                             pk_attr.text = pk_column
+                    reference_table = ''
+                    fk_attribute = ''
                     if len(table_info['foreign_keys']) >= 1:
                         foreign_keys_element = ET.SubElement(tbl,'foreignKeys')
+                        
                         for fk in table_info['foreign_keys']:
                             fk_attribute, reference_table, reference_pk = fk
                             #Check if reference table and reference attribute exist
@@ -235,11 +242,13 @@ def create_table(db_name, table_info):
                                 refAttribute = ET.SubElement(references,'refAttribute')
                                 refAttribute.text = reference_pk
                     tree.write("DataBases.xml") 
-                    #create an empty file for the data
-                    file_name = table_name + ".json"
-                    file_path = os.path.join(os.getcwd(), file_name)
-                    with open(file_path, "w") as json_file:
-                        pass
+                    #create collection for table
+                    client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
+                    db = client[db_name]
+                    db.create_collection(table_name)
+                    #create index for foreign key
+                    if not reference_table == '' and not fk_attribute == '':
+                        db.create_collection('index'+reference_table+fk_attribute)
                     return "Query executed successfully"
     
         
@@ -331,6 +340,12 @@ def insert(db_name, table_name, column_names, values):
         #1. exista tabelul cu numele asta si coloanele astea            x
         #2. tipurile valorilor corespund cu tipurile coloanelor         x
         #3. sa nu adaugam o valoare pt cheia primara care exista deja   x
+
+    names_values = {}
+    for i in range(0,len(column_names)):
+        names_values[column_names[i]] = values[i]
+
+
     tree = ET.parse('DataBases.xml')
     root = tree.getroot()
 
@@ -342,6 +357,12 @@ def insert(db_name, table_name, column_names, values):
                 structure = table.find("Structure")
                 columns = structure.findall("Attribute")
                 decalred_column_names = [col.attrib["attributeName"] for col in columns]
+
+                #find unique attributes
+                uniqueColumns = []
+                for col in columns:
+                    if "isUnique" in col.attrib and col.attrib["isUnique"] == "1":
+                        uniqueColumns.append(col)
 
                 #verificam daca toate coloanele exista
                 for column in column_names:
@@ -367,6 +388,8 @@ def insert(db_name, table_name, column_names, values):
                     primary_key = table.find("primaryKey")
                     pk_attribute = primary_key.find("pkAttribute")
 
+                    
+
                     #construct the key-value object
                     if column_names[i] == pk_attribute.text:
                         key = values[i]                    
@@ -376,20 +399,53 @@ def insert(db_name, table_name, column_names, values):
                         else:
                             concatenated_values = concatenated_values+"#"+str(values[i])
                     
-                ob = {
-                    'key':key,
-                    'value': concatenated_values
-                }
                 # save to db
                 client = pymongo.MongoClient("mongodb+srv://isgbd:isgbd@cluster0.wtuux7j.mongodb.net/?retryWrites=true&w=majority")
                 db = client[db_name]
                 collection = db[table_name]
                 #verificam daca mai exista record-uri cu aceeasi valoare pt cheia primara
-                objects_by_pk = collection.find_one({'key':ob['key']})
-                if objects_by_pk is not None:
-                    return "The same primary key exists"
+                # objects_by_pk = collection.find_one({'key':ob['key']})
+                # if objects_by_pk is not None:
+                #     return "The same primary key exists"
+
                 # Insert a single document
-                result = collection.insert_one(ob)
+                result = collection.insert_one({"_id":key,"value":concatenated_values})
+
+                #insert unique columns in index
+                uniqueColNames = [col.attrib["attributeName"] for col in uniqueColumns]
+                for i in range(0,len(column_names)-1):
+                    if column_names[i] in uniqueColNames:
+                        index = db['index'+column_names[i]]
+                        index.insert_one({"_id":values[i],"value":values[0]})
+
+                
+                #de aflat daca alt tabel referentiaza tabelul asta
+                databases = root.findall("DataBase")
+                if len(databases):
+                    for database in databases:
+                        if database.attrib['dataBaseName'] == db_name:
+                            tables = database.find("Tables")
+                            for table in tables.findall("Table"):
+                                foreignKeysElement = table.find("foreignKeys")
+                                if foreignKeysElement is not None:
+                                    foreignKeys = foreignKeysElement.findall("foreignKey")
+                                    for foreignKey in foreignKeys:
+                                        fkAttribute = foreignKey.find("fkAttribute")
+                                        references = foreignKey.find("references")
+                                        refTable = references.find("refTable")
+                                        if refTable.text == table_name:
+                                            #add in index
+                                            index = db['index'+table_name+fkAttribute.text]
+                                            index_object = index.find_one({"_id":values[len(values)-1]})
+                                            if index_object is None:
+                                                index.insert_one({"_id":values[len(values)-1],"value":names_values['id']})
+                                            else:
+                                                pass
+                                                #concateneaza
+
+                                    
+
+                    
                 print("Inserted document ID:", result.inserted_id)
                 return "Query executed successfully"
                
@@ -465,51 +521,51 @@ def handle_client(conn, addr):
             print(f"{addr}: {msg}")
 
             #check if the message is a valid sql query
-            pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)|INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?|DELETE\s+FROM\s+([a-zA-Z_][a-zA-Z0-9_]*) WHERE\s+(.*);?")
-            if re.fullmatch(pattern, msg):
-                query_words = msg.split(" ")
-                if query_words[0] == 'USE':
-                    if find_database(query_words[1]) is not None:
-                        current_database = query_words[1]
-                        send_feedback_to_client("Database selected", conn)
+            # pattern = re.compile(r"(USE\s[\w]+)|(CREATE\sDATABASE\s[\w]+)|(DROP\sDATABASE\s[\w]+)|(DROP\sTABLE\s[\w]+)|(CREATE\s+(UNIQUE\s+)?INDEX\s+(\w+)\s+ON\s+(\w+)\s+\(([^)]+)\))|CREATE TABLE ([a-zA-Z_][a-zA-Z0-9_]*)\s*\((.*)\)|INSERT INTO (\w+)\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\);?|DELETE\s+FROM\s+([a-zA-Z_][a-zA-Z0-9_]*) WHERE\s+(.*);?")
+            # if re.fullmatch(pattern, msg):
+            query_words = msg.split(" ")
+            if query_words[0] == 'USE':
+                if find_database(query_words[1]) is not None:
+                    current_database = query_words[1]
+                    send_feedback_to_client("Database selected", conn)
+                else:
+                    send_feedback_to_client("Database does not exist!", conn)
+            elif query_words[0] == 'CREATE':
+                db_name = query_words[2]
+                if query_words[1] == 'DATABASE':
+                    query_execution_result = create_database(db_name)
+                    send_feedback_to_client(query_execution_result, conn)
+                elif query_words[1] == 'TABLE':
+                    if current_database == '':
+                        send_feedback_to_client("No database specified", conn)
                     else:
-                        send_feedback_to_client("Database does not exist!", conn)
-                elif query_words[0] == 'CREATE':
-                    db_name = query_words[2]
-                    if query_words[1] == 'DATABASE':
-                        query_execution_result = create_database(db_name)
-                        send_feedback_to_client(query_execution_result, conn)
-                    elif query_words[1] == 'TABLE':
-                        if current_database == '':
-                            send_feedback_to_client("No database specified", conn)
-                        else:
-                            table_info = parse_create_table(msg)
-                            query_execution_result = create_table(current_database, table_info)
-                            send_feedback_to_client(query_execution_result,conn)
-                    elif 'INDEX' in query_words:
-                        index_info = parse_create_index(msg)
-                        query_execution_result = create_index(current_database, index_info[0],index_info[1],index_info[2],index_info[3])
-                        send_feedback_to_client(query_execution_result, conn)
-                elif query_words[0] == 'DROP':
-                    if query_words[1] == 'DATABASE':
-                        db_name = query_words[2]
-                        query_execution_result = drop_database(db_name)
+                        table_info = parse_create_table(msg)
+                        query_execution_result = create_table(current_database, table_info)
                         send_feedback_to_client(query_execution_result,conn)
-                    elif query_words[1] == 'TABLE':
-                        if current_database == '':
-                            send_feedback_to_client("No database specified", conn)
-                        else:
-                            table_name = query_words[2]
-                            query_execution_result = drop_table(current_database, table_name)
-                            send_feedback_to_client(query_execution_result, conn)
-                elif query_words[0] == 'INSERT':
-                    table_info = parse_insert(msg)
-                    query_execution_result = insert(current_database,table_info["table_name"], table_info["column_names"], table_info["values"])
+                elif 'INDEX' in query_words:
+                    index_info = parse_create_index(msg)
+                    query_execution_result = create_index(current_database, index_info[0],index_info[1],index_info[2],index_info[3])
                     send_feedback_to_client(query_execution_result, conn)
-                elif query_words[0] == 'DELETE':
-                    table_info = parse_delete(msg)
-                    query_execution_result = delete(table_info['table_name'], current_database, table_info['attrib'],table_info['attrib_value'])
-                    send_feedback_to_client(query_execution_result, conn)
+            elif query_words[0] == 'DROP':
+                if query_words[1] == 'DATABASE':
+                    db_name = query_words[2]
+                    query_execution_result = drop_database(db_name)
+                    send_feedback_to_client(query_execution_result,conn)
+                elif query_words[1] == 'TABLE':
+                    if current_database == '':
+                        send_feedback_to_client("No database specified", conn)
+                    else:
+                        table_name = query_words[2]
+                        query_execution_result = drop_table(current_database, table_name)
+                        send_feedback_to_client(query_execution_result, conn)
+            elif query_words[0] == 'INSERT':
+                table_info = parse_insert(msg)
+                query_execution_result = insert(current_database,table_info["table_name"], table_info["column_names"], table_info["values"])
+                send_feedback_to_client(query_execution_result, conn)
+            elif query_words[0] == 'DELETE':
+                table_info = parse_delete(msg)
+                query_execution_result = delete(table_info['table_name'], current_database, table_info['attrib'],table_info['attrib_value'])
+                send_feedback_to_client(query_execution_result, conn)
             elif msg == DISCONNECT_MESSAGE:   
                 connected = False
                 send_feedback_to_client("Disconnected successfully", conn)                   
