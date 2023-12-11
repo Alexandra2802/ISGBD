@@ -505,7 +505,32 @@ def delete(table_name, db_name, attrib, attrib_value):
                         return "No documents matched"
             return "Table not found"
     
-    
+
+def parse_select(query):
+     # Extract columns
+    columns_match = re.search(r'SELECT\s+(DISTINCT\s+)?(.+?)\s+FROM', query, re.IGNORECASE)
+    distinct_present = bool(columns_match.group(1))
+    columns = [col.strip() for col in columns_match.group(2).split(',')]
+
+    # Extract table
+    table_match = re.search(r'FROM\s+(\w+)', query, re.IGNORECASE)
+    table = table_match.group(1) if table_match else None
+
+    # Extract conditions
+    where_match = re.search(r'WHERE\s+(.+)$', query, re.IGNORECASE)
+    conditions = where_match.group(1).strip() if where_match else None
+
+    return {
+        'distinct': distinct_present,
+        'columns': columns,
+        'table': table,
+        'conditions': conditions
+    }
+
+    # print("Distinct Present:", result['distinct'])
+    # print("Columns:", result['columns'])
+    # print("Table:", result['table'])
+    # print("Conditions:", result['conditions'])
 
                     
 def handle_client(conn, addr):
